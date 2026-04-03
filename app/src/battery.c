@@ -36,16 +36,39 @@ static const struct device *battery;
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_LITHIUM_VOLTAGE)
 static uint8_t lithium_ion_mv_to_pct(int16_t bat_mv) {
-    // Simple linear approximation of a battery based off adafruit's discharge graph:
-    // https://learn.adafruit.com/li-ion-and-lipoly-batteries/voltages
+    static const struct {
+        uint8_t lvl_pct;
+        uint16_t lvl_mv;
+    } levels[] = {
+        { 100, 4200 },
+        {  95, 4060 },
+        {  90, 3980 },
+        {  80, 3920 },
+        {  70, 3870 },
+        {  60, 3820 },
+        {  50, 3790 },
+        {  40, 3750 },
+        {  30, 3710 },
+        {  20, 3670 },
+        {  10, 3610 },
+        {   5, 3580 },
+        {   0, 3270 },
+    };
 
-    if (bat_mv >= 4200) {
+    if (bat_mv >= levels[0].lvl_mv) {
         return 100;
-    } else if (bat_mv <= 3450) {
-        return 0;
     }
 
-    return bat_mv * 2 / 15 - 459;
+    for (int i = 1; i < ARRAY_SIZE(levels); i++) {
+        if (bat_mv >= levels[i].lvl_mv) {
+            return levels[i].lvl_pct +
+                   (bat_mv - levels[i].lvl_mv) *
+                   (levels[i-1].lvl_pct - levels[i].lvl_pct) /
+                   (levels[i-1].lvl_mv - levels[i].lvl_mv);
+        }
+    }
+
+    return 0;
 }
 
 #endif // IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_LITHIUM_VOLTAGE)
