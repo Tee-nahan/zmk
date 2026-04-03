@@ -26,6 +26,26 @@ static uint8_t last_state_of_charge = 0;
 
 uint8_t zmk_battery_state_of_charge(void) { return last_state_of_charge; }
 
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_LITHIUM_VOLTAGE)
+#define BATTERY_SAMPLE_COUNT 4
+static uint16_t mv_samples[BATTERY_SAMPLE_COUNT];
+static uint8_t mv_sample_idx = 0;
+static uint8_t mv_sample_count = 0;
+
+static uint16_t battery_mv_average(uint16_t new_mv) {
+    mv_samples[mv_sample_idx] = new_mv;
+    mv_sample_idx = (mv_sample_idx + 1) % BATTERY_SAMPLE_COUNT;
+    if (mv_sample_count < BATTERY_SAMPLE_COUNT) {
+        mv_sample_count++;
+    }
+    uint32_t sum = 0;
+    for (int i = 0; i < mv_sample_count; i++) {
+        sum += mv_samples[i];
+    }
+    return (uint16_t)(sum / mv_sample_count);
+}
+#endif
+
 #if DT_HAS_CHOSEN(zmk_battery)
 static const struct device *const battery = DEVICE_DT_GET(DT_CHOSEN(zmk_battery));
 #else
@@ -107,9 +127,10 @@ static int zmk_battery_update(const struct device *battery) {
     }
 
     uint16_t mv = voltage.val1 * 1000 + (voltage.val2 / 1000);
-    state_of_charge.val1 = lithium_ion_mv_to_pct(mv);
+    uint16_t avg_mv = battery_mv_average(mv);
+    state_of_charge.val1 = lithium_ion_mv_to_pct(avg_mv);
 
-    LOG_DBG("State of change %d from %d mv", state_of_charge.val1, mv);
+    LOG_DBG("State of charge %d from avg %d mv (raw %d mv)", state_of_charge.val1, avg_mv, mv);
 #else
 #error "Not a supported reporting fetch mode"
 #endif
